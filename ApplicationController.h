@@ -7,7 +7,6 @@ enum class MACHINE_STATE {
     WAIT_INPUT,
     WAIT_START,
     MOVE_GANTRY,
-    OPEN_CLAW,
     DROP_CLAW,
     CLOSE_CLAW,
     RETURN_CLAW,
@@ -28,7 +27,6 @@ private:
     void waitInput();
     void waitStart();
     void moveGantry();
-    void openClaw();
     void dropClaw();
     void closeClaw();
     void returnClaw();
@@ -47,7 +45,11 @@ Q_SIGNALS:
     void timeElapsedChanged(QString time);
     void coinChanged(int coin);
     void machineStateChanged(QString state);
-    
+    void actuatorStepChanged(float ratioX, float ratioY, float ratioZ, float ratioClaw);;
+//    void axisXStepChanged(int axisXStep);
+//    void axisYStepChanged(int axisYStep);
+//    void axisZStepChanged(int axisZStep);
+//    void clawStepChanged(int clawStep);
 private:
     void run() override;
     

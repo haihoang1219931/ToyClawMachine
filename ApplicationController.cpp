@@ -4,6 +4,10 @@ ApplicationController::ApplicationController(QThread *parent) : QThread(parent)
 {
     m_coin = 0;
     m_maxTime = 60;
+    m_axisXStep = 0;
+    m_axisYStep = 0;
+    m_axisZStep = 0;
+    m_clawStep = 0;
     setMachineState(MACHINE_STATE::WAIT_INPUT);
     resetGame();
 }
@@ -17,16 +21,12 @@ void ApplicationController::resetGame() {
     m_axisX = 0;
     m_axisY = 0;
     m_axisZ = 0;
-    
-    m_axisXStep = 0;
-    m_axisYStep = 0;
-    m_axisZStep = 0;
-    m_clawStep = 0;
+   
     
     m_axisXStepMax = 60;
     m_axisYStepMax = 50;
     m_axisZStepMax = 40;
-    m_clawStepMax = 10;
+    m_clawStepMax = 60;
 }
 
 void ApplicationController::startService() {
@@ -68,9 +68,6 @@ void ApplicationController::run() {
         case MACHINE_STATE::MOVE_GANTRY:
             moveGantry();
             break;
-        case MACHINE_STATE::OPEN_CLAW:
-            openClaw();
-            break;
         case MACHINE_STATE::DROP_CLAW:
             dropClaw();
             break;
@@ -88,7 +85,7 @@ void ApplicationController::run() {
             break;
         }
         printf("stateMachine[%d]\r\n",m_machineState);
-        msleep(1000);
+        msleep(30);
     }
     printf("Exit\r\n");
 }
@@ -114,73 +111,102 @@ void ApplicationController::moveGantry() {
     if(m_axisXStep+m_axisX >= 0 && 
             m_axisXStep+m_axisX <= m_axisXStepMax) {
         m_axisXStep += m_axisX;
+        Q_EMIT actuatorStepChanged(
+                (float)m_axisXStep/(float)m_axisXStepMax,
+                (float)m_axisYStep/(float)m_axisYStepMax,
+                (float)m_axisZStep/(float)m_axisZStepMax,
+                (float)m_clawStep/(float)m_clawStepMax);
     }
     if(m_axisYStep+m_axisY >= 0 && 
             m_axisYStep+m_axisY <= m_axisYStepMax) {
-        m_axisYStep += m_axisY; 
+        m_axisYStep += m_axisY;
+        Q_EMIT actuatorStepChanged(
+                (float)m_axisXStep/(float)m_axisXStepMax,
+                (float)m_axisYStep/(float)m_axisYStepMax,
+                (float)m_axisZStep/(float)m_axisZStepMax,
+                (float)m_clawStep/(float)m_clawStepMax);
     }
     printf("AxisX(%d/%d) AxisY(%d/%d)\r\n",
            m_axisXStep,m_axisXStepMax,
            m_axisYStep,m_axisYStepMax);
     if(m_clawPressed) {
-        m_claw = 1;
-        setMachineState(MACHINE_STATE::OPEN_CLAW);
+        m_axisZ = 1;
+        setMachineState(MACHINE_STATE::DROP_CLAW);
         m_clawPressed = false;
     }
 }
 
-void ApplicationController::openClaw() {
-    if(m_clawStep + m_claw <= m_clawStepMax) {
-        m_clawStep += m_claw;
-    } else {
-        m_axisZ = 1;
-        setMachineState(MACHINE_STATE::DROP_CLAW);
-    }
-}
 void ApplicationController::dropClaw() {
     if(m_axisZStep + m_axisZ <= m_axisZStepMax) {
         m_axisZStep += m_axisZ;
+        Q_EMIT actuatorStepChanged(
+                (float)m_axisXStep/(float)m_axisXStepMax,
+                (float)m_axisYStep/(float)m_axisYStepMax,
+                (float)m_axisZStep/(float)m_axisZStepMax,
+                (float)m_clawStep/(float)m_clawStepMax);
     } else {
         m_axisZ = -1;
-        m_claw = -1;
+        m_claw = 1;
         setMachineState(MACHINE_STATE::CLOSE_CLAW);
     }
 }
 void ApplicationController::closeClaw() {
-    if(m_clawStep + m_claw >= 0) {
+    if(m_clawStep + m_claw <= m_clawStepMax) {
         m_clawStep += m_claw;
+        Q_EMIT actuatorStepChanged(
+                (float)m_axisXStep/(float)m_axisXStepMax,
+                (float)m_axisYStep/(float)m_axisYStepMax,
+                (float)m_axisZStep/(float)m_axisZStepMax,
+                (float)m_clawStep/(float)m_clawStepMax);
     } else {
-        m_axisX = -1;
-        m_axisY = -1;
         setMachineState(MACHINE_STATE::RETURN_CLAW);
     }
 }
 void ApplicationController::returnClaw() {
-    if(m_axisXStep > 0) {
-        m_axisXStep += m_axisX;
-    }
-    if(m_axisYStep > 0) {
-        m_axisYStep += m_axisY; 
-    }
-    if(m_axisXStep == 0 && m_axisYStep == 0) {
+    if(m_axisZStep + m_axisZ >= 0) {
+        m_axisZStep += m_axisZ;
+        Q_EMIT actuatorStepChanged(
+                (float)m_axisXStep/(float)m_axisXStepMax,
+                (float)m_axisYStep/(float)m_axisYStepMax,
+                (float)m_axisZStep/(float)m_axisZStepMax,
+                (float)m_clawStep/(float)m_clawStepMax);
+    } else {
+        m_axisX = -1;
+        m_axisY = -1;
         setMachineState(MACHINE_STATE::MOVE_HOME);
     }
+    
 }
 void ApplicationController::moveHome() {
-    if(m_axisZStep > 0) {
-        m_axisZStep += m_axisX;
+    if(m_axisXStep + m_axisX >= 0) {
+        m_axisXStep += m_axisX;
+        Q_EMIT actuatorStepChanged(
+                (float)m_axisXStep/(float)m_axisXStepMax,
+                (float)m_axisYStep/(float)m_axisYStepMax,
+                (float)m_axisZStep/(float)m_axisZStepMax,
+                (float)m_clawStep/(float)m_clawStepMax);
     }
-    if(m_axisYStep > 0) {
+    if(m_axisYStep + m_axisY >= 0) {
         m_axisYStep += m_axisY; 
+        Q_EMIT actuatorStepChanged(
+                (float)m_axisXStep/(float)m_axisXStepMax,
+                (float)m_axisYStep/(float)m_axisYStepMax,
+                (float)m_axisZStep/(float)m_axisZStepMax,
+                (float)m_clawStep/(float)m_clawStepMax);
     }
-    if(m_axisXStep == 0 && m_axisYStep == 0) {
-        m_claw = 1;
+    if(m_axisXStep <= 0 && m_axisYStep <= 0) {
+        m_claw = -1;
         setMachineState(MACHINE_STATE::DROP_PRIZE);
     }
 }
 void ApplicationController::dropPrize() {
-    if(m_clawStep + m_claw <= m_clawStepMax) {
+    if(m_clawStep + m_claw >= 0) {
         m_clawStep += m_claw;
+        Q_EMIT actuatorStepChanged(
+                (float)m_axisXStep/(float)m_axisXStepMax,
+                (float)m_axisYStep/(float)m_axisYStepMax,
+                (float)m_axisZStep/(float)m_axisZStepMax,
+                (float)m_clawStep/(float)m_clawStepMax);
     } else {
         setMachineState(MACHINE_STATE::WAIT_INPUT);
         resetGame();
@@ -198,9 +224,6 @@ void ApplicationController::setMachineState(MACHINE_STATE newState) {
         break;
     case MACHINE_STATE::MOVE_GANTRY:
         Q_EMIT machineStateChanged("MOVE_GANTRY");
-        break;
-    case MACHINE_STATE::OPEN_CLAW:
-        Q_EMIT machineStateChanged("OPEN_CLAW");
         break;
     case MACHINE_STATE::DROP_CLAW:
         Q_EMIT machineStateChanged("DROP_CLAW");

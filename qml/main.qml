@@ -67,6 +67,13 @@ Window {
         onMachineStateChanged: {
             lblMachineState.text = state;
         }
+        onActuatorStepChanged: {
+            canvas.rX = ratioX;
+            canvas.rY = ratioY;
+            canvas.rZ = ratioZ;
+            canvas.rClaw = ratioClaw;
+            canvas.requestPaint();
+        }
     }
 
     Button{
@@ -99,7 +106,7 @@ Window {
         text: "Down"
         font.pointSize: 12
         onPressed: {
-            application.handleAxisChanged(0,-1);
+            application.handleAxisChanged(0,1);
         }
         onReleased: {
             application.handleAxisChanged(0,0);
@@ -111,7 +118,7 @@ Window {
         text: "Up"
         font.pointSize: 12
         onPressed: {
-            application.handleAxisChanged(0,1);
+            application.handleAxisChanged(0,-1);
         }
         onReleased: {
             application.handleAxisChanged(0,0);
@@ -157,10 +164,104 @@ Window {
         id: rectangle
         x: 10
         y: 12
-        width: 698
-        height: 495
+        width: 700
+        height: 500
         color: "#84af40"
-        
+        Canvas {
+            id: canvas
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.leftMargin: 49
+            anchors.topMargin: 71
+            width: 605
+            height: 390
+            property color strokeStyle:  Qt.darker(fillStyle, 1.4)
+            property color fillStyle: "#b40000" // red
+            property int lineWidth: 3
+            property bool fill: true
+            property bool stroke: true
+            property real alpha: 1.0
+            property real scale : 1
+            property real rotate : 60
+            antialiasing: true
+            
+            property real rX: 0
+            property real rY: 0
+            property real rZ: 0
+            property real rClaw: 0
+            onPaint: {
+                var ctx = canvas.getContext('2d');
+                ctx.reset();
+                ctx.globalAlpha = canvas.alpha;
+                ctx.strokeStyle = canvas.strokeStyle;
+                ctx.fillStyle = canvas.fillStyle;
+                ctx.lineWidth = canvas.lineWidth;
+    
+                //O----A-------H------D Axis X
+                //|   /       /      / 
+                //|  /       /      / 
+                //| M-------I------N 
+                //|/       /|     / 
+                //B-------K-|----C---
+                //Axis Y    |
+                //          |
+                //         <P>
+                var OB = 100
+                var OA = OB*Math.tan(rotate);
+                var OD = 600;
+                var BC = OD - OA;
+                var Mx = OA*(1-rY)
+                var My = OB*rY
+                var OH = OA + (OD-OA)*rX
+                var BK = (OD-OA)*rX
+                var Nx = Mx + (OD-OA)
+                var Ny = My
+                var Ix = Mx + (OD-OA)*rX
+                var Iy = My
+                var Px = Ix
+                var Py = Iy + OB*2*rZ
+                
+                // Draw Top
+                ctx.moveTo(OA,0)
+                ctx.lineTo(OD,0)
+                ctx.lineTo(BC,OB)
+                ctx.lineTo(0,OB)
+                ctx.lineTo(OA,0)
+                ctx.stroke();
+                
+                ctx.fillStyle = "green";
+                // Draw X
+                ctx.moveTo(Mx, My);
+                ctx.lineTo(Nx, Ny);
+                ctx.fill();
+//                // Draw Y
+                ctx.moveTo(OH,0);
+                ctx.lineTo(BK,OB);
+                ctx.stroke();
+                // Draw CrossLine
+                ctx.fillStyle  = "red";
+                ctx.rect(Ix-10,Iy-10,20,20);
+                ctx.stroke();
+                // Draw Z
+                ctx.fillStyle  = "green";
+                ctx.moveTo(Ix,Iy);
+                ctx.lineTo(Px,Py);
+                ctx.stroke();
+                // Draw Craw
+                ctx.fillStyle  = "black";
+                ctx.beginPath();
+                ctx.moveTo(Px,Py);
+                ctx.lineTo(Px+50,Py);
+                ctx.arc(Px, Py, 
+                        50, 0, Math.PI/10+ Math.PI/3 * rClaw);
+                ctx.lineTo(Px,Py);
+                ctx.arc(Px, Py, 
+                        50, Math.PI-( Math.PI/10+ Math.PI/3 * rClaw), Math.PI);
+                ctx.lineTo(Px,Py);
+                ctx.stroke();
+            }
+        }
+
         Label {
             id: lblMachineState
             x: 8
@@ -172,6 +273,8 @@ Window {
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
             font.pointSize: 20
+            
+            
         }
     }
     
@@ -199,6 +302,9 @@ Window {
             if(checked) application.startService();
             else application.stopService();
         }
+    }
+    Component.onCompleted: {
+        canvas.requestPaint();
     }
 }
 
