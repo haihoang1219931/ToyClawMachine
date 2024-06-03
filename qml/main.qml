@@ -58,8 +58,8 @@ Window {
     width: 720
     height: 720
     title: qsTr("ToyClawMachine")
-    
-    ApplicationController {
+
+    MainProcess {
         id: application
         onCoinChanged: {
             lblCoin.text = coin;
@@ -73,6 +73,12 @@ Window {
             canvas.rZ = ratioZ;
             canvas.rClaw = ratioClaw;
             canvas.requestPaint();
+        }
+        onLedButtonChanged: {
+            ledBtn.color = active?"green":"white";
+        }
+        onLedJoystickChanged: {
+            ledJS.color = active?"orange":"white";
         }
     }
 
@@ -106,7 +112,7 @@ Window {
         text: "Down"
         font.pointSize: 12
         onPressed: {
-            application.handleAxisChanged(0,1);
+            application.handleAxisChanged(0,-1);
         }
         onReleased: {
             application.handleAxisChanged(0,0);
@@ -118,36 +124,42 @@ Window {
         text: "Up"
         font.pointSize: 12
         onPressed: {
-            application.handleAxisChanged(0,-1);
+            application.handleAxisChanged(0,1);
         }
         onReleased: {
             application.handleAxisChanged(0,0);
         }
     }
-    
+
     Button {
         x: 469
-        y: 608
+        y: 669
         width: 105
-        height: 101
+        height: 40
         text: "Claw"
         font.pointSize: 12
-        onClicked: {
-            application.handleClawPressed();
+        onPressed: {
+            application.handleButtonSignal(true);
+        }
+        onReleased: {
+            application.handleButtonSignal(false);
         }
     }
-    
+
     Button {
         id: button
         x: 601
         y: 669
         text: qsTr("Coin")
         font.pointSize: 12
-        onClicked: {
-            application.handleCoinPushed();
+        onPressed: {
+            application.handleCoinSignal(true);
+        }
+        onReleased: {
+            application.handleCoinSignal(false);
         }
     }
-    
+
     Label {
         id: lblCoin
         x: 601
@@ -159,7 +171,7 @@ Window {
         verticalAlignment: Text.AlignVCenter
         font.pointSize: 12
     }
-    
+
     Rectangle {
         id: rectangle
         x: 10
@@ -184,7 +196,7 @@ Window {
             property real scale : 1
             property real rotate : 60
             antialiasing: true
-            
+
             property real rX: 0
             property real rY: 0
             property real rZ: 0
@@ -196,12 +208,12 @@ Window {
                 ctx.strokeStyle = canvas.strokeStyle;
                 ctx.fillStyle = canvas.fillStyle;
                 ctx.lineWidth = canvas.lineWidth;
-    
+
                 //O----A-------H------D Axis X
-                //|   /       /      / 
-                //|  /       /      / 
-                //| M-------I------N 
-                //|/       /|     / 
+                //|   /       /      /
+                //|  /       /      /
+                //| M-------I------N
+                //|/       /|     /
                 //B-------K-|----C---
                 //Axis Y    |
                 //          |
@@ -220,7 +232,7 @@ Window {
                 var Iy = My
                 var Px = Ix
                 var Py = Iy + OB*2*rZ
-                
+
                 // Draw Top
                 ctx.moveTo(OA,0)
                 ctx.lineTo(OD,0)
@@ -228,13 +240,13 @@ Window {
                 ctx.lineTo(0,OB)
                 ctx.lineTo(OA,0)
                 ctx.stroke();
-                
+
                 ctx.fillStyle = "green";
                 // Draw X
                 ctx.moveTo(Mx, My);
                 ctx.lineTo(Nx, Ny);
                 ctx.fill();
-//                // Draw Y
+                //                // Draw Y
                 ctx.moveTo(OH,0);
                 ctx.lineTo(BK,OB);
                 ctx.stroke();
@@ -252,10 +264,10 @@ Window {
                 ctx.beginPath();
                 ctx.moveTo(Px,Py);
                 ctx.lineTo(Px+50,Py);
-                ctx.arc(Px, Py, 
+                ctx.arc(Px, Py,
                         50, 0, Math.PI/10+ Math.PI/3 * rClaw);
                 ctx.lineTo(Px,Py);
-                ctx.arc(Px, Py, 
+                ctx.arc(Px, Py,
                         50, Math.PI-( Math.PI/10+ Math.PI/3 * rClaw), Math.PI);
                 ctx.lineTo(Px,Py);
                 ctx.stroke();
@@ -273,11 +285,11 @@ Window {
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
             font.pointSize: 20
-            
-            
+
+
         }
     }
-    
+
     Label {
         id: label1
         x: 469
@@ -289,7 +301,7 @@ Window {
         verticalAlignment: Text.AlignVCenter
         font.pointSize: 20
     }
-    
+
     CheckBox {
         id: checkBox
         x: 10
@@ -302,6 +314,28 @@ Window {
             if(checked) application.startService();
             else application.stopService();
         }
+    }
+
+    Rectangle {
+        id: ledJS
+        x: 268
+        y: 585
+        width: 60
+        height: 60
+        color: "#ffffff"
+        radius: 30
+        border.color: "#000000"
+    }
+
+    Rectangle {
+        id: ledBtn
+        x: 492
+        y: 598
+        width: 60
+        height: 60
+        color: "#ffffff"
+        radius: 30
+        border.color: "#000000"
     }
     Component.onCompleted: {
         canvas.requestPaint();

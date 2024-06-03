@@ -52,13 +52,13 @@
 #include <QLoggingCategory>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
-#include "ApplicationController.h"
+#include "MainProcess.h"
 
 int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
     QQmlApplicationEngine engine;
-    qmlRegisterType<ApplicationController>("diy", 1, 0, "ApplicationController");
+    qmlRegisterType<MainProcess>("diy", 1, 0, "MainProcess");
     engine.load(QUrl(QStringLiteral("qrc:/qml/main.qml")));
     if (engine.rootObjects().isEmpty())
             return -1;

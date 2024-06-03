@@ -1,244 +1,265 @@
 #include "ApplicationController.h"
 
-ApplicationController::ApplicationController(QThread *parent) : QThread(parent)
+ApplicationController::ApplicationController():
+    m_coin(0),
+    m_joystickLEDEnable(false),
+    m_buttonLEDEnable(false),
+    m_bgmStopPosition(0)
 {
-    m_coin = 0;
-    m_maxTime = 60;
-    m_axisXStep = 0;
-    m_axisYStep = 0;
-    m_axisZStep = 0;
-    m_clawStep = 0;
-    setMachineState(MACHINE_STATE::WAIT_INPUT);
-    resetGame();
+
 }
 
 ApplicationController::~ApplicationController() {
-    stopService();
-    sleep(2);
 }
+
 void ApplicationController::resetGame() {
-    m_timeElapsed = m_maxTime;
-    m_axisX = 0;
-    m_axisY = 0;
-    m_axisZ = 0;
-   
-    
-    m_axisXStepMax = 60;
-    m_axisYStepMax = 50;
-    m_axisZStepMax = 40;
-    m_clawStepMax = 60;
-}
-
-void ApplicationController::startService() {
-    m_stopped = false;
-    start();
-}
-
-void ApplicationController::stopService() {
-    m_stopped = true;
-}
-
-void ApplicationController::handleCoinPushed() {
-    m_coin ++;
-    Q_EMIT coinChanged(m_coin);
-}
-void ApplicationController::handleAxisChanged(int axisX, int axisY) {
-    m_axisX = axisX;
-    m_axisY = axisY;
-}
-void ApplicationController::handleClawPressed() {
-    m_clawPressed = true;
-}
-int ApplicationController::getTimeElapsed() {
-    return m_timeElapsed;
-}
-
-void ApplicationController::run() {
-    Q_EMIT machineStateChanged("WAIT_INPUT");
-    resetGame();
-    while(!m_stopped) {
-        
-        switch(m_machineState) {
-        case MACHINE_STATE::WAIT_INPUT:
-            waitInput();
-            break;
-        case MACHINE_STATE::WAIT_START:
-            waitStart();
-            break;
-        case MACHINE_STATE::MOVE_GANTRY:
-            moveGantry();
-            break;
-        case MACHINE_STATE::DROP_CLAW:
-            dropClaw();
-            break;
-        case MACHINE_STATE::CLOSE_CLAW:
-            closeClaw();
-            break;
-        case MACHINE_STATE::RETURN_CLAW:
-            returnClaw();
-            break;
-        case MACHINE_STATE::MOVE_HOME:
-            moveHome();
-            break;
-        case MACHINE_STATE::DROP_PRIZE:
-            dropPrize();
-            break;
-        }
-        printf("stateMachine[%d]\r\n",m_machineState);
-        msleep(30);
+    for(int i=0; i< MACHINE_AXIS::AXIS_MAX; i++) {
+        m_axisEnable[i] = false;
+        m_axisDir[i] = 0;
     }
-    printf("Exit\r\n");
+    m_clawDir = 0;
+    m_clawEnable = false;
+}
+
+void ApplicationController::loopFunction() {
+	switch(m_machineState) {
+		case MACHINE_STATE::WAIT_INPUT:
+			waitInput();
+			break;
+        case MACHINE_STATE::WAIT_READY:
+            waitReady();
+            break;
+		case MACHINE_STATE::MOVE_GANTRY:
+			moveGantry();
+			break;
+		case MACHINE_STATE::DROP_CLAW:
+			dropClaw();
+			break;
+		case MACHINE_STATE::CLOSE_CLAW:
+			closeClaw();
+			break;
+		case MACHINE_STATE::RETURN_CLAW:
+			returnClaw();
+			break;
+		case MACHINE_STATE::MOVE_HOME:
+			moveHome();
+			break;
+        case MACHINE_STATE::OPEN_CLAW:
+            openClaw();
+			break;
+	}
 }
 
 void ApplicationController::waitInput() {
-    m_clawPressed = false;
-    if(m_coin >= 1) {
-        Q_EMIT coinChanged(m_coin);
-        setMachineState(MACHINE_STATE::WAIT_START);
+    if(m_joystickLEDEnable) {
+        m_joystickLEDEnable = false;
+        activeJoystickLED(false);
     }
-}
-
-void ApplicationController::waitStart() {
-    if(m_clawPressed) {
-        setMachineState(MACHINE_STATE::MOVE_GANTRY);
-        m_coin --;
-        Q_EMIT coinChanged(m_coin);
-        m_clawPressed = false;
+    if(m_coin <= 0 && m_buttonLEDEnable) {
+        m_buttonLEDEnable = false;
+        activeButtonLED(false);
     }
-}
+    if(m_axisEnable[AXIS_X]) {
+        m_axisEnable[AXIS_X] = false;
+        enableAxis(MACHINE_AXIS::AXIS_X,false);
+    }
 
+    if(m_axisEnable[AXIS_Y]) {
+        m_axisEnable[AXIS_Y] = false;
+        enableAxis(MACHINE_AXIS::AXIS_Y,false);
+	}
+
+    if(m_axisEnable[AXIS_Z]) {
+        m_axisEnable[AXIS_Z] = false;
+        enableAxis(MACHINE_AXIS::AXIS_Z,false);
+	}
+    if(isNewCoinInserted()) {
+        updateCoin(m_coin + 1);
+        m_bgmStopPosition = getSoundPosition(SOUND_ID::SOUND_BGM);
+        playSound(SOUND_ID::SOUND_NEWCOIN);
+        if(!m_buttonLEDEnable) {
+            m_buttonLEDEnable = true;
+            activeButtonLED(true);
+        }
+    } else {
+        if(soundStopped(SOUND_ID::SOUND_NEWCOIN)){
+            continueSound(SOUND_ID::SOUND_BGM,m_bgmStopPosition);
+        }
+    }
+    if(isButtonPressed()) {
+        if(m_coin > 0) updateCoin(m_coin - 1);
+        setMachineState(MACHINE_STATE::WAIT_READY);
+    }
+
+}
+void ApplicationController::waitReady() {
+    msleep(1000);
+    setMachineState(MACHINE_STATE::MOVE_GANTRY);
+}
 void ApplicationController::moveGantry() {
-    if(m_axisXStep+m_axisX >= 0 && 
-            m_axisXStep+m_axisX <= m_axisXStepMax) {
-        m_axisXStep += m_axisX;
-        Q_EMIT actuatorStepChanged(
-                (float)m_axisXStep/(float)m_axisXStepMax,
-                (float)m_axisYStep/(float)m_axisYStepMax,
-                (float)m_axisZStep/(float)m_axisZStepMax,
-                (float)m_clawStep/(float)m_clawStepMax);
+    if(!m_joystickLEDEnable) {
+        m_joystickLEDEnable = true;
+        activeJoystickLED(true);
     }
-    if(m_axisYStep+m_axisY >= 0 && 
-            m_axisYStep+m_axisY <= m_axisYStepMax) {
-        m_axisYStep += m_axisY;
-        Q_EMIT actuatorStepChanged(
-                (float)m_axisXStep/(float)m_axisXStepMax,
-                (float)m_axisYStep/(float)m_axisYStepMax,
-                (float)m_axisZStep/(float)m_axisZStepMax,
-                (float)m_clawStep/(float)m_clawStepMax);
+    if(!m_axisEnable[AXIS_X]) {
+        m_axisEnable[AXIS_X] = true;
+        enableAxis(MACHINE_AXIS::AXIS_X,true);
+	}
+
+    if(!m_axisEnable[AXIS_Y]) {
+        m_axisEnable[AXIS_Y] = true;
+        enableAxis(MACHINE_AXIS::AXIS_Y,true);
+	}
+	// get joystick input
+    int axisXDir = 0;
+    if(isJoystickPressed(JOYSTICK_DIR::JS_LEFT)) {
+        axisXDir = -1;
+        this->printf("Left\r\n");
+	}
+    if(isJoystickPressed(JOYSTICK_DIR::JS_RIGHT)) {
+        axisXDir = +1;
+        this->printf("Right\r\n");
+	}
+    int axisYDir = 0;
+    if(isJoystickPressed(JOYSTICK_DIR::JS_UP)) {
+        axisYDir = 1;
+        this->printf("Up\r\n");
+	}
+    if(isJoystickPressed(JOYSTICK_DIR::JS_DOWN)) {
+        axisYDir = -1;
+        this->printf("Down\r\n");
+	}
+
+	// change stepper direction
+    if(axisXDir != m_axisDir[AXIS_X]) {
+        m_axisDir[AXIS_X] = axisXDir;
+        if(m_axisDir[AXIS_X] != 0) setAxisDir(MACHINE_AXIS::AXIS_X, axisXDir);
+	}
+
+    if(axisYDir != m_axisDir[AXIS_Y]) {
+        m_axisDir[AXIS_Y] = axisYDir;
+        if(m_axisDir[AXIS_Y] != 0) setAxisDir(MACHINE_AXIS::AXIS_Y, axisYDir);
     }
-    printf("AxisX(%d/%d) AxisY(%d/%d)\r\n",
-           m_axisXStep,m_axisXStepMax,
-           m_axisYStep,m_axisYStepMax);
-    if(m_clawPressed) {
-        m_axisZ = 1;
+
+	// move gantry
+    if((!isAxisAtMin(MACHINE_AXIS::AXIS_X) && axisXDir < 0) ||
+        (!isAxisAtMax(MACHINE_AXIS::AXIS_X) && axisXDir > 0)) {
+        moveAxis(MACHINE_AXIS::AXIS_X);
+    }
+    if((!isAxisAtMin(MACHINE_AXIS::AXIS_Y) && axisYDir < 0) ||
+        (!isAxisAtMax(MACHINE_AXIS::AXIS_Y) && axisYDir > 0)) {
+        moveAxis(MACHINE_AXIS::AXIS_Y);
+    }
+
+    // get claw input
+    if(isButtonPressed()) {
         setMachineState(MACHINE_STATE::DROP_CLAW);
-        m_clawPressed = false;
     }
 }
 
 void ApplicationController::dropClaw() {
-    if(m_axisZStep + m_axisZ <= m_axisZStepMax) {
-        m_axisZStep += m_axisZ;
-        Q_EMIT actuatorStepChanged(
-                (float)m_axisXStep/(float)m_axisXStepMax,
-                (float)m_axisYStep/(float)m_axisYStepMax,
-                (float)m_axisZStep/(float)m_axisZStepMax,
-                (float)m_clawStep/(float)m_clawStepMax);
+    if(!m_axisEnable[MACHINE_AXIS::AXIS_Z]) {
+        m_axisEnable[MACHINE_AXIS::AXIS_Z] = true;
+        enableAxis(MACHINE_AXIS::AXIS_Z,true);
+	}
+    if(m_axisDir[MACHINE_AXIS::AXIS_Z]!= 1) {
+        m_axisDir[MACHINE_AXIS::AXIS_Z] = 1;
+        setAxisDir(MACHINE_AXIS::AXIS_Z,m_axisDir[MACHINE_AXIS::AXIS_Z]);
+	}
+    if(!isAxisAtMax(MACHINE_AXIS::AXIS_Z)) {
+        moveAxis(MACHINE_AXIS::AXIS_Z);
+        m_bgmStopPosition = getSoundPosition(SOUND_ID::SOUND_BGM);
+        playSound(SOUND_ID::SOUND_CLAW_DROP, true);
     } else {
-        m_axisZ = -1;
-        m_claw = 1;
         setMachineState(MACHINE_STATE::CLOSE_CLAW);
+        playSound(SOUND_ID::SOUND_CLAW_HIT_TOP);
     }
+
 }
 void ApplicationController::closeClaw() {
-    if(m_clawStep + m_claw <= m_clawStepMax) {
-        m_clawStep += m_claw;
-        Q_EMIT actuatorStepChanged(
-                (float)m_axisXStep/(float)m_axisXStepMax,
-                (float)m_axisYStep/(float)m_axisYStepMax,
-                (float)m_axisZStep/(float)m_axisZStepMax,
-                (float)m_clawStep/(float)m_clawStepMax);
+    if(!isClawAtMax()) {
+        activeClaw(true);
     } else {
         setMachineState(MACHINE_STATE::RETURN_CLAW);
     }
 }
 void ApplicationController::returnClaw() {
-    if(m_axisZStep + m_axisZ >= 0) {
-        m_axisZStep += m_axisZ;
-        Q_EMIT actuatorStepChanged(
-                (float)m_axisXStep/(float)m_axisXStepMax,
-                (float)m_axisYStep/(float)m_axisYStepMax,
-                (float)m_axisZStep/(float)m_axisZStepMax,
-                (float)m_clawStep/(float)m_clawStepMax);
-    } else {
-        m_axisX = -1;
-        m_axisY = -1;
-        setMachineState(MACHINE_STATE::MOVE_HOME);
+    if(!m_axisEnable[MACHINE_AXIS::AXIS_Z]) {
+        m_axisEnable[MACHINE_AXIS::AXIS_Z] = true;
+        enableAxis(MACHINE_AXIS::AXIS_Z,true);
     }
-    
+    if(m_axisDir[MACHINE_AXIS::AXIS_Z]!= -1) {
+        m_axisDir[MACHINE_AXIS::AXIS_Z] = -1;
+        setAxisDir(MACHINE_AXIS::AXIS_Z,m_axisDir[MACHINE_AXIS::AXIS_Z]);
+    }
+    if(!isAxisAtMin(MACHINE_AXIS::AXIS_Z)) {
+        moveAxis(MACHINE_AXIS::AXIS_Z);
+        playSound(SOUND_ID::SOUND_CLAW_UP, true);
+    } else {
+        setMachineState(MACHINE_STATE::MOVE_HOME);
+        playSound(SOUND_ID::SOUND_CLAW_WIN);
+    }
 }
 void ApplicationController::moveHome() {
-    if(m_axisXStep + m_axisX >= 0) {
-        m_axisXStep += m_axisX;
-        Q_EMIT actuatorStepChanged(
-                (float)m_axisXStep/(float)m_axisXStepMax,
-                (float)m_axisYStep/(float)m_axisYStepMax,
-                (float)m_axisZStep/(float)m_axisZStepMax,
-                (float)m_clawStep/(float)m_clawStepMax);
+    bool axisXAtMin = false;
+    bool axisYAtMin = false;
+    if(m_axisDir[MACHINE_AXIS::AXIS_X] != -1) {
+        m_axisDir[MACHINE_AXIS::AXIS_X] = -1;
+        setAxisDir(MACHINE_AXIS::AXIS_X, m_axisDir[MACHINE_AXIS::AXIS_X]);
     }
-    if(m_axisYStep + m_axisY >= 0) {
-        m_axisYStep += m_axisY; 
-        Q_EMIT actuatorStepChanged(
-                (float)m_axisXStep/(float)m_axisXStepMax,
-                (float)m_axisYStep/(float)m_axisYStepMax,
-                (float)m_axisZStep/(float)m_axisZStepMax,
-                (float)m_clawStep/(float)m_clawStepMax);
+    if(m_axisDir[MACHINE_AXIS::AXIS_Y] != -1) {
+        m_axisDir[MACHINE_AXIS::AXIS_Y] = -1;
+        setAxisDir(MACHINE_AXIS::AXIS_Y, m_axisDir[MACHINE_AXIS::AXIS_Y]);
     }
-    if(m_axisXStep <= 0 && m_axisYStep <= 0) {
-        m_claw = -1;
-        setMachineState(MACHINE_STATE::DROP_PRIZE);
+    if(!isAxisAtMin(MACHINE_AXIS::AXIS_X)) {
+        moveAxis(MACHINE_AXIS::AXIS_X);
+    } else {
+        axisXAtMin = true;
+    }
+    if(!isAxisAtMin(MACHINE_AXIS::AXIS_Y)) {
+        moveAxis(MACHINE_AXIS::AXIS_Y);
+    } else {
+        axisYAtMin = true;
+    }
+    if(axisXAtMin && axisYAtMin) {
+        setMachineState(MACHINE_STATE::OPEN_CLAW);
     }
 }
-void ApplicationController::dropPrize() {
-    if(m_clawStep + m_claw >= 0) {
-        m_clawStep += m_claw;
-        Q_EMIT actuatorStepChanged(
-                (float)m_axisXStep/(float)m_axisXStepMax,
-                (float)m_axisYStep/(float)m_axisYStepMax,
-                (float)m_axisZStep/(float)m_axisZStepMax,
-                (float)m_clawStep/(float)m_clawStepMax);
+void ApplicationController::openClaw() {
+    if(!isClawAtMin()) {
+        activeClaw(false);
     } else {
         setMachineState(MACHINE_STATE::WAIT_INPUT);
-        resetGame();
     }
 }
 void ApplicationController::setMachineState(MACHINE_STATE newState) {
     if(newState == m_machineState) return;
     m_machineState = newState;
+    showStateMachine(m_machineState);
     switch(m_machineState) {
     case MACHINE_STATE::WAIT_INPUT:
-        Q_EMIT machineStateChanged("WAIT_INPUT");
+        this->printf("WAIT_INPUT\r\n");
         break;
-    case MACHINE_STATE::WAIT_START:
-        Q_EMIT machineStateChanged("WAIT_START");
+    case MACHINE_STATE::WAIT_READY:
+        this->printf("WAIT_READY\r\n");
         break;
     case MACHINE_STATE::MOVE_GANTRY:
-        Q_EMIT machineStateChanged("MOVE_GANTRY");
+        this->printf("MOVE_GANTRY\r\n");
         break;
     case MACHINE_STATE::DROP_CLAW:
-        Q_EMIT machineStateChanged("DROP_CLAW");
+        this->printf("DROP_CLAW\r\n");
         break;
     case MACHINE_STATE::CLOSE_CLAW:
-        Q_EMIT machineStateChanged("CLOSE_CLAW");
+        this->printf("CLOSE_CLAW\r\n");
         break;
     case MACHINE_STATE::RETURN_CLAW:
-        Q_EMIT machineStateChanged("RETURN_CLAW");
+        this->printf("RETURN_CLAW\r\n");
         break;
     case MACHINE_STATE::MOVE_HOME:
-        Q_EMIT machineStateChanged("MOVE_HOME");
+        this->printf("MOVE_HOME\r\n");
         break;
-    case MACHINE_STATE::DROP_PRIZE:
-        Q_EMIT machineStateChanged("DROP_PRIZE");
+    case MACHINE_STATE::OPEN_CLAW:
+        this->printf("OPEN_CLAW\r\n");
         break;
     }
 }

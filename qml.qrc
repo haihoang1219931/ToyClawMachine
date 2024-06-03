@@ -1,5 +1,10 @@
 <RCC>
     <qresource prefix="/">
         <file>qml/main.qml</file>
+        <file>qml/sound/1.wav</file>
+        <file>qml/sound/2.wav</file>
+        <file>qml/sound/3.wav</file>
+        <file>qml/sound/4.wav</file>
+        <file>qml/sound/5.wav</file>
     </qresource>
 </RCC>
